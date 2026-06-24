@@ -2,84 +2,179 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Cartografía | Clínica de la Convergencia</title>
-    <!-- Mantenemos Firebase por si acaso, aunque ya no hay login en el mapa -->
+    <title>Estación 2: Memorias Traumáticas</title>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; background: #000; }
-        #app { width: 100vw; height: 100vh; background: url('neuro.png') center/cover no-repeat; position: relative; }
-        
-        /* HEIMINADO EL LOGIN-OVERLAY PARA QUE EL MAPA SEA DIRECTO */
-
-        /* Nodos del Mapa */
-        .nodo { position: absolute; width: 90px; height: 90px; border-radius: 50%; background: rgba(212, 175, 55, 0.15); border: 2px solid #d4af37; color: #d4af37; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.75em; cursor: pointer; transition: 0.4s; z-index: 10; text-decoration: none; box-sizing: border-box; padding: 5px;}
-        .nodo:hover { transform: scale(1.15) translateY(-5px); box-shadow: 0 5px 25px rgba(212, 175, 55, 0.6); background: rgba(212, 175, 55, 0.3); }
-
-        /* Estado Desactivado (Para estaciones no disponibles aún) */
-        .nodo.desactivado { border-color: #444; color: #666; background: rgba(100,100,100,0.1); cursor: default; }
-        .nodo.desactivado:hover { transform: none; box-shadow: none; background: rgba(100,100,100,0.1); }
+        body { background: #050508; color: #d4af37; font-family: sans-serif; padding: 20px; }
+        #login-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:#000; z-index:9999; display:flex; align-items:center; justify-content:center; }
+        .contenido { display:none; max-width: 800px; margin: auto; border: 1px solid #d4af37; padding: 40px; background: #0d1117; border-radius: 10px;}
+        .btn { padding: 10px 20px; border: 1px solid #d4af37; color: #d4af37; background: transparent; cursor: pointer; margin: 5px; transition: 0.3s; }
+        .btn:hover { background: #d4af37; color: #000; }
+        video, audio { width: 100%; margin: 20px 0; border: 1px solid #d4af37; }
+        #feedback { margin: 15px 0; font-weight: bold; min-height: 20px; }
+        .correcta { color: #4caf50; }
+        .incorrecta { color: #f44336; }
+        #opciones-container { margin-top: 15px; }
+        #pregunta-texto { border-top: 1px solid #d4af37; padding-top: 20px; margin-top: 20px;}
     </style>
 </head>
 <body>
 
-<div id="app">
-    <!-- El mapa ahora es visible directamente al cargar -->
-    <div id="mapa"></div>
+<div id="login-overlay">
+    <div style="text-align:center; border:1px solid #d4af37; padding:20px; background: #0d1117;">
+        <h3>IDENTIFICACIÓN ESTACIÓN 2</h3>
+        <p style="font-size: 0.8em; color: #aaa;">"Memorias Traumáticas"</p>
+        <input type="text" id="nombre-input" placeholder="APELLIDO Nombre" style="padding: 10px; width: 250px;">
+        <div style="margin-top: 15px;">
+            <button class="btn" onclick="registrarInicio()">INGRESAR</button>
+        </div>
+    </div>
+</div>
+
+<div class="contenido" id="actividad">
+    <h1>Estación 2: El Trazado de la Huella Mnémica</h1>
+    <p>Analice el material clínico adjunto. Identifique los marcadores somáticos y el punto de clivaje del relato antes de responder.</p>
+
+    <video controls src="https://github.com/drrubenmpereyra-stack/video-staci-n-2/raw/refs/heads/main/Video%20estacion2.mp4"></video>
+    <audio controls src="https://github.com/drrubenmpereyra-stack/audio-estacion-2/raw/refs/heads/main/audio2.mp4"></audio>
+
+    <div id="contenedor-evaluacion">
+        <h3 id="pregunta-texto"></h3>
+        <div id="opciones-container"></div>
+        <div id="feedback"></div>
+        <button id="btn-siguiente" class="btn" style="display:none;">Siguiente Pregunta</button>
+    </div>
 </div>
 
 <script>
-    // Configuración de Firebase (No se usa actualmente, pero se mantiene para no romper nada)
+    // Configuración de Firebase (Compartida para todo el proyecto)
     const firebaseConfig = { apiKey: "AIzaSyD47_2UtWLFI_VRVvvXVAqn4zZzZ4d1ggo", projectId: "av-clinica-convergencia", authDomain: "av-clinica-convergencia.firebaseapp.com", databaseURL: "https://av-clinica-convergencia-default-rtdb.firebaseio.com", storageBucket: "av-clinica-convergencia.firebasestorage.app", messagingSenderId: "939404425675", appId: "1:939404425675:web:8cfae157099efabd741e4e" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    
+    // Variables de Estado (Persistentes durante la sesión en esta página)
+    let usuarioActual = "";
+    let indice = 0;
+    let puntaje = 0;
+    let respondido = false; // Bloqueo de múltiples respuestas
 
-    const estaciones = [
-        { id: 1, x: 15, y: 50, nombre: "Cartografía de la Intersubjetividad", disponible: true },
-        { id: 2, x: 25, y: 30, nombre: "Memorias traumáticas", disponible: true }, // ESTA ES LA QUE DABA 404
-        { id: 3, x: 35, y: 20, nombre: "Circuitos de recompensa", disponible: false },
-        { id: 4, x: 45, y: 25, nombre: "Interfaz mente cuerpo", disponible: false },
-        { id: 5, x: 55, y: 40, nombre: "Neurobiología de la repetición", disponible: false },
-        { id: 6, x: 65, y: 30, nombre: "Plasticidad simbólica y sináptica", disponible: false },
-        { id: 7, x: 75, y: 45, nombre: "Arquitectura del sueño", disponible: false },
-        { id: 8, x: 65, y: 60, nombre: "El Ello somático", disponible: false },
-        { id: 9, x: 50, y: 70, nombre: "Estructuras límbicas", disponible: false },
-        { id: 10, x: 35, y: 80, nombre: "Ética de la singularidad", disponible: false }
+    // BANCO DE PREGUNTAS TÉCNICAS (ESTACIÓN 2)
+    const bancoPreguntas = [
+        { q: "¿Qué estructura cerebral queda inhibida durante el clivaje traumático?", o: ["Hipocampo", "Amígdala", "Corteza Prefrontal"], c: 0, f: "El hipocampo, encargado de la memoria episódica, se bloquea ante el exceso de cortisol." },
+        { q: "¿Cómo se manifiesta la memoria traumática a nivel corporal?", o: ["Recuerdo narrativo", "Somatización repetitiva", "Olvido total"], c: 1, f: "El trauma no se recuerda como historia, sino que se repite como acto o síntoma corporal." },
+        { q: "En el audio, ¿qué indicador somático anticipa el clivaje?", o: ["Disminución del tono", "Aceleración respiratoria", "Pausa narrativa coherente"], c: 1, f: "La desregulación autónoma (respiración) es la vía regia del afecto traumático." },
+        { q: "¿Cuál es la función del analista ante el silencio traumático?", o: ["Interpretar el contenido", "Actuar como regulador afectivo", "Cerrar la sesión"], c: 1, f: "El analista presta su corteza prefrontal para regular la desregulación del paciente." },
+        { q: "¿Qué tipo de memoria es la que el paciente no logra integrar?", o: ["Memoria declarativa", "Memoria procedimental", "Memoria semántica"], c: 0, f: "El paciente falla en convertir la experiencia vivida en una narrativa coherente." },
+        { q: "La desorganización discursiva a partir del 0:35 refleja:", o: ["Clivaje del sujeto", "Continuidad defensiva", "Fatiga cognitiva"], c: 0, f: "La interrupción marca la irrupción de un resto pulsional (Ello) que desorganiza el discurso." },
+        { q: "¿Qué fenómeno contratransferencial es esperable en el clivaje?", o: ["Empatía cálida", "Disociación empática", "Rechazo consciente"], c: 1, f: "El analista siente un vacío súbito o una desconexión, espejo de la del paciente." },
+        { q: "¿Cuál es el rol del cortisol en el clivaje?", o: ["Hiperactivación de la amígdala", "Sedación del sujeto", "Homeostasis sináptica"], c: 0, f: "Un exceso de cortisol refuerza el miedo (amígdala) pero bloquea el registro temporal." },
+        { q: "¿Qué implica la 'repetición' en esta memoria traumática?", o: ["Búsqueda de una ligazón fallida", "Un olvido exitoso", "Una alianza sólida"], c: 0, f: "El sujeto repite intentando, sin éxito, simbolizar el impacto original." },
+        { q: "¿Qué rasgo define la eficacia clínica en el abordaje del trauma?", o: ["La reconsolidación mnémica", "La catarsis emocional", "La interpretación genética"], c: 0, f: "La capacidad de traer el recuerdo y modificar su carga afectiva mediante el vínculo." }
     ];
 
-    const mapa = document.getElementById('mapa');
-    
-    estaciones.forEach(est => {
-        const div = document.createElement('a'); 
-        div.id = 'nodo-' + est.id;
-        div.style.left = est.x + '%';
-        div.style.top = est.y + '%';
-        div.innerHTML = est.nombre;
+    // REGISTRO 1: Al abrir la estación (Graba Nombre e Inicio)
+    async function registrarInicio() {
+        usuarioActual = document.getElementById('nombre-input').value;
+        if (!usuarioActual) return;
         
-        if (est.disponible) {
-            div.className = 'nodo';
-            div.href = "#"; // Necesario para que el <a> funcione correctamente
-
-            // Lógica de redirección por ID (Solo para las disponibles)
-            div.onclick = (e) => {
-                e.preventDefault(); // Previene la recarga de página
-
-                if (est.id === 1) {
-                    window.location.href = "https://drrubenmpereyra-stack.github.io/estacion-1-evaluacion-clinica/";
-                } 
-                // === CORRECCIÓN DE ENLACE ESTACIÓN 2 (Nombre de carpeta correcto) ===
-                else if (est.id === 2) {
-                    window.location.href = "https://drrubenmpereyra-stack.github.io/estacion2/";
-                }
-            };
-        } else {
-            // Estilo para estaciones futuras
-            div.className = 'nodo desactivado';
-            div.onclick = (e) => e.preventDefault(); // No hace nada
+        // Grabado fáctico al inicio
+        try {
+            await db.collection("progreso").doc(usuarioActual).set({ 
+                nombre: usuarioActual,
+                estacion_2_inicio: new Date().toISOString()
+            }, { merge: true });
+            
+            // Si el guardado es exitoso, mostramos la actividad
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('actividad').style.display = 'block';
+            cargarPregunta();
+        } catch (e) {
+            console.error("Error al registrar inicio:", e);
+            alert("Error al conectar con la base de datos.");
         }
+    }
+
+    // Lógica de visualización de preguntas
+    function cargarPregunta() {
+        respondido = false;
+        const p = bancoPreguntas[indice];
+        document.getElementById('pregunta-texto').textContent = (indice + 1) + ". " + p.q;
+        document.getElementById('opciones-container').innerHTML = p.o.map((op, i) => `<button class="btn" onclick="validar(${i})">${op}</button>`).join('');
+        document.getElementById('feedback').textContent = "";
+        document.getElementById('feedback').className = "";
+        document.getElementById('btn-siguiente').style.display = "none";
+    }
+
+    // Lógica de feedback cualitativo y puntaje
+    function validar(i) {
+        if (respondido) return; // Bloquear si ya contestó
+        respondido = true;
+        const p = bancoPreguntas[indice];
+        const f = document.getElementById('feedback');
         
-        mapa.appendChild(div);
-    });
+        if (i === p.c) { 
+            puntaje++; 
+            f.textContent = "Correcto: " + p.f; 
+            f.className = "correcta";
+        } else { 
+            f.textContent = "Incorrecto: " + p.f; 
+            f.className = "incorrecta";
+        }
+        document.getElementById('btn-siguiente').style.display = "inline-block";
+    }
+
+    // Botón Siguiente / Finalizar
+    document.getElementById('btn-siguiente').onclick = () => {
+        indice++;
+        if (indice < bancoPreguntas.length) {
+            cargarPregunta();
+        } else {
+            finalizarEvaluacion();
+        }
+    };
+
+    // REGISTRO 2: Al finalizar (Cálculo y Grado de Nota y Perfil)
+    function finalizarEvaluacion() {
+        // Cálculo cualitativo del perfil
+        let perfil = "";
+        if (puntaje <= 4) perfil = "Nivel de observación superficial (Centrado en narrativa).";
+        else if (puntaje <= 8) perfil = "Nivel de convergencia clínica adecuada.";
+        else perfil = "Nivel de maestría analítica (Detección del clivaje).";
+
+        // Devolución en pantalla
+        document.getElementById('contenedor-evaluacion').innerHTML = `
+            <h3>Informe de Evaluación: Estación 2</h3>
+            <p><strong>Puntaje Final:</strong> ${puntaje}/10</p>
+            <p><strong>Análisis Técnico:</strong> ${perfil}</p>
+            <div style="margin-top: 20px;">
+                <button class="btn" onclick="guardarFinal()">GUARDAR Y TERMINAR</button>
+                <button class="btn" onclick="cerrarEstacion()">CERRAR</button>
+            </div>`;
+    }
+
+    // Guardado fáctico al final
+    async function guardarFinal() {
+        if (!usuarioActual) return;
+        try {
+            await db.collection("progreso").doc(usuarioActual).set({ 
+                estacion_2_nota: puntaje, 
+                estacion_2_finalizada: true,
+                estacion_2_fin: new Date().toISOString() 
+            }, { merge: true });
+            
+            alert("Nota " + puntaje + "/10 guardada para " + usuarioActual);
+        } catch (e) {
+            console.error("Error al guardar nota:", e);
+            alert("Error al guardar la nota.");
+        }
+    }
+
+    // Redirección segura al Mapa
+    function cerrarEstacion() {
+        window.location.href = "https://drrubenmpereyra-stack.github.io/mapa-global-estaciones/";
+    }
+
 </script>
 </body>
 </html>
