@@ -1,101 +1,31 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Estación 2: Memorias Traumáticas</title>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <style>
-        body { background: #050508; color: #d4af37; font-family: sans-serif; padding: 20px; }
-        #login-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:#000; z-index:9999; display:flex; align-items:center; justify-content:center; }
-        .contenido { display:none; max-width: 800px; margin: auto; border: 1px solid #d4af37; padding: 40px; background: #0d1117; border-radius: 10px;}
-        .btn { padding: 10px 20px; border: 1px solid #d4af37; color: #d4af37; background: transparent; cursor: pointer; margin: 5px; transition: 0.3s; }
-        .btn:hover { background: #d4af37; color: #000; }
-        video, audio { width: 100%; margin: 20px 0; border: 1px solid #d4af37; }
-        #feedback { margin: 15px 0; font-weight: bold; min-height: 20px; }
-        .correcta { color: #4caf50; }
-        .incorrecta { color: #f44336; }
-    </style>
-</head>
-<body>
-
-<div id="login-overlay">
-    <div style="text-align:center; border:1px solid #d4af37; padding:20px; background: #0d1117;">
-        <h3>IDENTIFICACIÓN ESTACIÓN 2</h3>
-        <input type="text" id="nombre-input" placeholder="APELLIDO Nombre" style="padding: 10px; width: 250px;">
-        <button class="btn" onclick="registrarInicio()">INGRESAR</button>
-    </div>
-</div>
-
-<div class="contenido" id="actividad">
-    <h1>Estación 2: Memorias Traumáticas</h1>
-    <video controls src="https://github.com/drrubenmpereyra-stack/video-estaci-n-2/raw/refs/heads/main/Video%20estacion2.mp4"></video>
-    <audio controls src="https://github.com/drrubenmpereyra-stack/audio-estacion-2/raw/refs/heads/main/audio2.mp4"></audio>
-    <div id="contenedor-evaluacion">
-        <h3 id="pregunta-texto"></h3>
-        <div id="opciones-container"></div>
-        <div id="feedback"></div>
-        <button id="btn-siguiente" class="btn" style="display:none;">Siguiente Pregunta</button>
-    </div>
-</div>
-
-<script>
-    const firebaseConfig = { apiKey: "AIzaSyD47_2UtWLFI_VRVvvXVAqn4zZzZ4d1ggo", projectId: "av-clinica-convergencia", authDomain: "av-clinica-convergencia.firebaseapp.com", databaseURL: "https://av-clinica-convergencia-default-rtdb.firebaseio.com", storageBucket: "av-clinica-convergencia.firebasestorage.app", messagingSenderId: "939404425675", appId: "1:939404425675:web:8cfae157099efabd741e4e" };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    
-    let usuarioActual = "";
-    let indice = 0;
-    let puntaje = 0;
-    let respondido = false;
-
-    const bancoPreguntas = [
-        { q: "¿Qué estructura cerebral queda inhibida durante el clivaje traumático?", o: ["Hipocampo", "Amígdala", "Corteza Prefrontal"], c: 0, f: "El hipocampo, encargado de la memoria episódica, se bloquea ante el exceso de cortisol." },
-        { q: "¿Cómo se manifiesta la memoria traumática a nivel corporal?", o: ["Recuerdo narrativo", "Somatización repetitiva", "Olvido total"], c: 1, f: "El trauma no se recuerda como historia, sino que se repite como acto o síntoma corporal." },
-        { q: "En el audio, ¿qué indicador somático anticipa el clivaje?", o: ["Disminución del tono", "Aceleración respiratoria", "Pausa narrativa coherente"], c: 1, f: "La desregulación autónoma es la vía regia del afecto traumático." },
-        { q: "¿Cuál es la función del analista ante el silencio traumático?", o: ["Interpretar el contenido", "Actuar como regulador afectivo", "Cerrar la sesión"], c: 1, f: "El analista presta su corteza prefrontal para regular la desregulación del paciente." },
-        { q: "¿Qué tipo de memoria es la que el paciente no logra integrar?", o: ["Memoria declarativa", "Memoria procedimental", "Memoria semántica"], c: 0, f: "El paciente falla en convertir la experiencia vivida en una narrativa coherente." },
-        { q: "La desorganización discursiva a partir del 0:35 refleja:", o: ["Clivaje del sujeto", "Continuidad defensiva", "Fatiga cognitiva"], c: 0, f: "La interrupción marca la irrupción de un resto pulsional que desorganiza el discurso." },
-        { q: "¿Qué fenómeno contratransferencial es esperable en el clivaje?", o: ["Empatía cálida", "Disociación empática", "Rechazo consciente"], c: 1, f: "El analista siente un vacío súbito o una desconexión, espejo de la del paciente." },
-        { q: "¿Cuál es el rol del cortisol en el clivaje?", o: ["Hiperactivación de la amígdala", "Sedación del sujeto", "Homeostasis sináptica"], c: 0, f: "Un exceso de cortisol refuerza el miedo pero bloquea el registro temporal." },
-        { q: "¿Qué implica la 'repetición' en esta memoria traumática?", o: ["Búsqueda de una ligazón fallida", "Un olvido exitoso", "Una alianza sólida"], c: 0, f: "El sujeto repite intentando, sin éxito, simbolizar el impacto original." },
-        { q: "¿Qué rasgo define la eficacia clínica en el abordaje del trauma?", o: ["La reconsolidación mnémica", "La catarsis emocional", "La interpretación genética"], c: 0, f: "La capacidad de traer el recuerdo y modificar su carga afectiva mediante el vínculo." }
-    ];
-
-    async function registrarInicio() {
-        usuarioActual = document.getElementById('nombre-input').value;
-        if (!usuarioActual) return;
-        await db.collection("progreso").doc(usuarioActual).set({ nombre: usuarioActual, estacion_2_inicio: new Date().toISOString() }, { merge: true });
-        document.getElementById('login-overlay').style.display = 'none';
-        document.getElementById('actividad').style.display = 'block';
-        cargarPregunta();
-    }
-
-    function cargarPregunta() {
-        respondido = false;
-        const p = bancoPreguntas[indice];
-        document.getElementById('pregunta-texto').textContent = (indice + 1) + ". " + p.q;
-        document.getElementById('opciones-container').innerHTML = p.o.map((op, i) => `<button class="btn" onclick="validar(${i})">${op}</button>`).join('');
-    }
-
-    function validar(i) {
-        if (respondido) return;
-        respondido = true;
-        const p = bancoPreguntas[indice];
-        if (i === p.c) { puntaje++; document.getElementById('feedback').textContent = "Correcto: " + p.f; document.getElementById('feedback').className = "correcta"; }
-        else { document.getElementById('feedback').textContent = "Incorrecto: " + p.f; document.getElementById('feedback').className = "incorrecta"; }
-        document.getElementById('btn-siguiente').style.display = "inline-block";
-    }
-
-    document.getElementById('btn-siguiente').onclick = () => {
+document.getElementById('btn-siguiente').onclick = async () => {
         indice++;
-        if (indice < bancoPreguntas.length) { cargarPregunta(); document.getElementById('btn-siguiente').style.display = "none"; }
-        else { 
-            db.collection("progreso").doc(usuarioActual).set({ estacion_2_nota: puntaje, estacion_2_finalizada: true }, { merge: true });
-            document.getElementById('contenedor-evaluacion').innerHTML = `<h3>Puntaje Final: ${puntaje}/10</h3><button class="btn" onclick="window.location.href='https://drrubenmpereyra-stack.github.io/mapa-global-estaciones/'">VOLVER AL MAPA</button>`;
+        if (indice < bancoPreguntas.length) { 
+            cargarPregunta(); 
+            document.getElementById('btn-siguiente').style.display = "none"; 
+        } else { 
+            // Bloqueo temporal para asegurar que Firestore reciba los datos
+            document.getElementById('contenedor-evaluacion').innerHTML = "<h3>Guardando resultados en el sistema...</h3>";
+            
+            try {
+                await db.collection("progreso").doc(usuarioActual).set({ 
+                    estacion_2_nota: puntaje, 
+                    estacion_2_finalizada: true,
+                    estacion_2_fin: new Date().toISOString() 
+                }, { merge: true });
+                
+                // Solo después de la confirmación de la base de datos se habilita la salida
+                document.getElementById('contenedor-evaluacion').innerHTML = `
+                    <h3>Puntaje Final: ${puntaje}/10</h3>
+                    <button class="btn" onclick="window.location.href='https://drrubenmpereyra-stack.github.io/mapa-global-estaciones/'">VOLVER AL MAPA</button>
+                `;
+            } catch (error) {
+                console.error("Error al guardar:", error);
+                document.getElementById('contenedor-evaluacion').innerHTML = `
+                    <h3>Error al guardar.</h3>
+                    <button class="btn" onclick="location.reload()">REINTENTAR</button>
+                `;
+            }
         }
     };
-</script>
-</body>
-</html>
 
